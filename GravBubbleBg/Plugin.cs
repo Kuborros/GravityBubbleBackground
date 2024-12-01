@@ -1,4 +1,5 @@
 ﻿using BepInEx;
+using BepInEx.Configuration;
 using BepInEx.Logging;
 using HarmonyLib;
 using System.IO;
@@ -6,17 +7,20 @@ using UnityEngine;
 
 namespace GravBubbleBg
 {
-    [BepInPlugin(MyPluginInfo.PLUGIN_GUID, MyPluginInfo.PLUGIN_NAME, MyPluginInfo.PLUGIN_VERSION)]
+    [BepInPlugin("com.kuborro.plugins.fp2.gravbubblebg", MyPluginInfo.PLUGIN_NAME, "1.1.0")]
     public class Plugin : BaseUnityPlugin
     {
         public static AssetBundle moddedBundle;
 
         internal static new ManualLogSource Logger;
-        internal static GameObject background;
+        internal static GameObject background,background_noshader;
+        internal static Texture palette,palette_baku;
+
+        private static ConfigEntry<bool> configUseShader;
+        private static ConfigEntry<bool> configBlinkLights;
 
         private void Awake()
         {
-            // Plugin startup logic
             Logger = base.Logger;
 
             string assetPath = Path.Combine(Path.GetFullPath("."), "mod_overrides");
@@ -27,9 +31,24 @@ namespace GravBubbleBg
                 return;
             }
 
+            configUseShader = Config.Bind("General",
+                                    "Use Shader",
+                                    true,
+                                    "Enable a shader that cycles the light in the background. Disable to get extra performance on low-end machines.");
+             
+            configBlinkLights = Config.Bind("General",
+                                    "Broken Lights Effect",
+                                    true,
+                                    "Enable broken lights effect after Bakunawa launches. Disable if the effect is too distracting.");
+            
+
             background = moddedBundle.LoadAsset<GameObject>("GravityBubble_City");
+            background_noshader = moddedBundle.LoadAsset<GameObject>("GravityBubble_City_NoShader");
+            palette = moddedBundle.LoadAsset<Texture>("palette");
+            palette_baku = moddedBundle.LoadAsset<Texture>("palette_broken");
 
             Harmony.CreateAndPatchAll(typeof(PatchGravityBubble));
+            Harmony.CreateAndPatchAll(typeof(PatchBakuLaunch));
         }
 
         class PatchGravityBubble
@@ -40,28 +59,44 @@ namespace GravBubbleBg
             {
                 if (___stageName == "Gravity Bubble")
                 {
+                    background.GetComponent<SpriteRenderer>().material.SetTexture("colorMap", palette);
+
+                    GameObject bg;
+                    if (configUseShader.Value)
+                        bg = background;
+                    else
+                        bg = background_noshader;
+
                     foreach (SpriteRenderer backgrounds in FindObjectsOfType<SpriteRenderer>())
                     {
                         if (backgrounds.name == "Background")
                         {
-                            Logger.LogDebug("Found the bingus: " + backgrounds.name);
-                            GameObject bg0 = Instantiate(background, backgrounds.transform);
+                            GameObject bg0 = Instantiate(bg, backgrounds.transform);
                             bg0.SetActive(true);
                         }
                         if (backgrounds.name == "Background (1)")
                         {
-                            Logger.LogDebug("Found the bingus: " + backgrounds.name);
-                            GameObject bg1 = Instantiate(background, backgrounds.transform);
+                            GameObject bg1 = Instantiate(bg, backgrounds.transform);
                             bg1.SetActive(true);
                         }
                         if (backgrounds.name == "Background (2)")
                         {
-                            Logger.LogDebug("Found the bingus: " + backgrounds.name);
-                            GameObject bg2 = Instantiate(background, backgrounds.transform);
+                            GameObject bg2 = Instantiate(bg, backgrounds.transform);
                             bg2.SetActive(true);
                         }
                     }
                 }
+            }
+        }
+
+        class PatchBakuLaunch
+        {
+            [HarmonyPostfix]
+            [HarmonyPatch(typeof(BossBakunawa), "State_Start", MethodType.Normal)]
+            static void Postfix()
+            {
+                if (configBlinkLights.Value && configUseShader.Value)
+                    background.GetComponent<SpriteRenderer>().material.SetTexture("colorMap", palette_baku);
             }
         }
 
